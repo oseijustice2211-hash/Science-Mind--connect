@@ -1,17 +1,11 @@
 
 const express = require("express");
 const cors = require("cors");
-const OpenAI = require("openai");
 
 const app = express();
 
 app.use(express.json({ limit: "20kb" }));
-
 app.use(cors());
-
-const ai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 app.post("/ask", async (req, res) => {
   try {
@@ -29,26 +23,53 @@ app.post("/ask", async (req, res) => {
       });
     }
 
-    const response = await ai.responses.create({
-      model: "gpt-6-luna",
-      max_output_tokens: 1200,
-      instructions: `
-You are ScienceMind Connect AI Tutor.
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text: `You are ScienceMind Connect AI Tutor.
+              Explain Biology, Chemistry, Physics,
+              Agriculture and Environmental Science.
+              Also answer general educational questions.
+              Use simple language and examples.
+              Be accurate and admit uncertainty.
+              Help students understand, not just memorize.
+              Be respectful and age-appropriate.`
+            }]
+          },
+          contents: [{
+            role: "user",
+            parts: [{ text: question }]
+          }],
+          generationConfig: {
+            maxOutputTokens: 1200
+          }
+        })
+      }
+    );
 
-Explain science questions clearly.
-Cover Biology, Chemistry, Physics,
-Agriculture and Environmental Science.
+    const data = await response.json();
 
-Use examples and simple explanations.
-Help students understand difficult topics.
-Be accurate and admit uncertainty.
-Be respectful and educational.
-`,
-      input: question
-    });
+    if (!response.ok) {
+      console.error("Gemini error:", data);
+      return res.status(502).json({
+        error: "AI service could not answer. Please try again."
+      });
+    }
+
+    const answer = data.candidates?.[0]?.content?.parts
+      ?.map(part => part.text || "")
+      .join("\n");
 
     res.json({
-      answer: response.output_text
+      answer: answer || "No answer was generated."
     });
 
   } catch (error) {
@@ -61,5 +82,5 @@ Be respectful and educational.
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("ScienceMind AI is running.");
+  console.log("ScienceMind Gemini AI is running.");
 });
